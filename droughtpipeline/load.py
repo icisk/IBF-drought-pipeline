@@ -19,7 +19,6 @@ from droughtpipeline.data import (
 from urllib.error import HTTPError
 import urllib.request, json
 from datetime import datetime, timedelta, date
-import azure.cosmos.cosmos_client as cosmos_client
 import logging
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
@@ -27,8 +26,6 @@ import requests
 import geopandas as gpd
 from typing import List
 import shutil
-from azure.storage.blob import BlobServiceClient
-from azure.core.exceptions import ResourceNotFoundError
 
 COSMOS_DATA_TYPES = [
     "climate-region",
@@ -125,8 +122,6 @@ class Load:
             raise TypeError(f"invalid format of secrets, use secrets.Secrets")
         secrets.check_secrets(
             [
-                "COSMOS_URL",
-                "COSMOS_KEY",
                 "BLOB_ACCOUNT_NAME",
                 "BLOB_ACCOUNT_KEY",
                 "IBF_API_URL",
@@ -165,24 +160,6 @@ class Load:
                 f"Administrative boundaries for country {country} "
                 f"and admin level {adm_level} not found"
             )
-        # """Get administrative boundaries from PostgreSQL database"""
-        # engine = create_engine(
-        #     f"postgresql://{self.secrets.get_secret('SQL_USER')}:"
-        #     f"{self.secrets.get_secret('SQL_PASSWORD')}"
-        #     f"@{self.settings.get_setting('postgresql_server')}:"
-        #     f"{self.settings.get_setting('postgresql_port')}/"
-        #     f"{self.settings.get_setting('postgresql_database')}"
-        # )
-        # gdf = gpd.GeoDataFrame()
-        # try:
-        #     sql = f"SELECT geometry, adm{adm_level}_pcode FROM admin_boundaries_pcoded.{country.lower()}_adm{adm_level}"
-        #     gdf = gpd.GeoDataFrame.from_postgis(sql, engine, geom_col="geometry")
-        # except ProgrammingError:
-        #     logging.warning(
-        #         f"WARNING: no administrative boundaries found for country {country} "
-        #         f"and adm_level {adm_level}"
-        #     )
-        return gdf
 
     def __ibf_api_authenticate(self):
         no_attempts, attempt, login_response = 5, 0, None
@@ -570,30 +547,13 @@ class Load:
         adm_level=None,
         pcode=None,
         lead_time=None,
+        climate_region_code_path="./data/LSO_climate_region.json",
     ) -> AdminDataSet:
         """Download pipeline datasets from Cosmos DB"""
-        if data_type not in COSMOS_DATA_TYPES:
-            raise ValueError(
-                f"Data type {data_type} is not supported."
-                f"Supported storages are {', '.join(COSMOS_DATA_TYPES)}"
-            )
-        client_ = cosmos_client.CosmosClient(
-            self.secrets.get_secret("COSMOS_URL"),
-            {"masterKey": self.secrets.get_secret("COSMOS_KEY")},
-            user_agent="ibf-flood-pipeline",
-            user_agent_overwrite=True,
-        )
-        cosmos_db = client_.get_database_client("drought-pipeline")
-        cosmos_container_client = cosmos_db.get_container_client(data_type)
-        query = get_cosmos_query(
-            start_date, end_date, country, adm_level, pcode, lead_time
-        )
-        records_query = cosmos_container_client.query_items(
-            query=query,
-            enable_cross_partition_query=(
-                True if country is None else None
-            ),  # country must be the partition key
-        )
+        with open(climate_region_code_path) as f:
+            record_file = json.load(f)
+        records_query = [record_file]
+        logging.info(f"records_query {records_query} " )
         records = []
         for record in records_query:
             records.append(copy.deepcopy(record))
@@ -664,27 +624,6 @@ class Load:
             )
         return datasets[-1]
 
-    def __get_blob_service_client(self, blob_path: str):
-        """Get service client for Azure Blob Storage"""
-        blob_service_client = BlobServiceClient.from_connection_string(
-            f"DefaultEndpointsProtocol=https;"
-            f'AccountName={self.secrets.get_secret("BLOB_ACCOUNT_NAME")};'
-            f'AccountKey={self.secrets.get_secret("BLOB_ACCOUNT_KEY")};'
-            f"EndpointSuffix=core.windows.net"
-        )
-        container = self.settings.get_setting("blob_container") 
-        #blob_path = self.settings.get_setting("blob_storage_path")
-        return blob_service_client.get_blob_client(container=container, blob=blob_path)
-
-    def save_to_blob(self, local_path: str, file_dir_blob: str):
-        """Save file to Azure Blob Storage"""
-        # upload to Azure Blob Storage
-
-
-        blob_client = self.__get_blob_service_client(file_dir_blob)
-        with open(local_path, "rb") as upload_file:
-            blob_client.upload_blob(upload_file, overwrite=True)
-
     
     def upload_json_files(self, local_path: str): 
         """Find all JSON files in a directory and upload them to Azure Blob Storage"""
@@ -706,21 +645,8 @@ class Load:
                 local_path_ = os.path.join(local_path, file_name)
                 blob_path = os.path.join(blob_folder, file_name) #if blob_folder else file_name
                 logging.info(f"Uploading {local_path_} to {blob_path} in Blob Storage...")                 
-                self.save_to_blob(local_path_, blob_path)
+                # self.save_to_blob(local_path_, blob_path)
             
-
-
-    def get_from_blob(self, local_path: str, blob_path: str):
-        """Get file from Azure Blob Storage"""
-        blob_client = self.__get_blob_service_client(blob_path)
-
-        with open(local_path, "wb") as download_file:
-            try:
-                download_file.write(blob_client.download_blob().readall())
-            except ResourceNotFoundError:
-                raise FileNotFoundError(
-                    f"File {blob_path} not found in Azure Blob Storage"
-                )
                         
     def download_ecmwf_forecast(self,country, DATADIR, currentYear, currentMonth):
         """Download ECMWF seasonal hindcast data for historical period

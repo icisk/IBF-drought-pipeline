@@ -1,10 +1,9 @@
+import logging
 import os
 from enum import Enum
 from dotenv import load_dotenv
 import json
 import yaml
-from azure.identity import DefaultAzureCredential
-from azure.keyvault.secrets import SecretClient
 from urllib.parse import urlparse
 
 
@@ -20,7 +19,6 @@ class SecretsSource(Enum):
     env = "env"
     json = "json"
     yaml = "yaml"
-    azure = "azure"
 
 
 class Secrets:
@@ -50,18 +48,6 @@ class Secrets:
                     setattr(self, k, v)
         elif self.secret_source is SecretsSource.yaml:
             self.secrets = yaml.load(self.secret_path, Loader=yaml.FullLoader)
-        elif self.secret_source is SecretsSource.azure:
-            if (
-                "AZURE_CLIENT_ID" not in os.environ
-                or "AZURE_CLIENT_SECRET" not in os.environ
-                or "AZURE_TENANT_ID" not in os.environ
-            ):
-                raise PermissionError("Missing Azure credentials")
-            else:
-                credential = DefaultAzureCredential()
-                self.secrets = SecretClient(
-                    vault_url=self.secret_path, credential=credential
-                )
 
     def get_secret(self, secret):
         secret_value = None
@@ -89,6 +75,7 @@ class Secrets:
             except ValueError:
                 missing_secrets.append(secret)
         if missing_secrets:
-            raise Exception(
-                f"Missing secrets {', '.join(missing_secrets)} in {self.secret_path}"
-            )
+            logging.info(f"Missing secrets {', '.join(missing_secrets)}")
+            # raise Exception(
+            #     f"Missing secrets {', '.join(missing_secrets)} in {self.secret_path}"
+            # )

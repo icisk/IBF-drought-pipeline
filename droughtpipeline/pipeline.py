@@ -13,27 +13,22 @@ logger = logging.getLogger()
 logging.basicConfig(format="%(levelname)s: %(message)s", level=logging.INFO)
 logging.getLogger("requests").setLevel(logging.WARNING)
 logging.getLogger("urllib3").setLevel(logging.WARNING)
-logging.getLogger("azure").setLevel(logging.WARNING)
 logging.getLogger("requests_oauthlib").setLevel(logging.WARNING)
 
 
 class Pipeline:
     """Base class for flood data pipeline"""
 
-    def __init__(self, settings: Settings, secrets: Secrets, country: str):
+    def __init__(self, settings: Settings, secrets: Secrets, country: str, climate_region_code_path: str):
         self.settings = settings
+        logger.info(f"Pipeline settings: {json.dumps(self.settings.settings, indent=2)}")
         if country not in [c["name"] for c in self.settings.get_setting("countries")]:
             raise ValueError(f"No config found for country {country}")
         self.country = country
         self.load = Load(settings=settings, secrets=secrets)
         self.data = PipelineDataSets(country=country, settings=settings)
 
-       
-
-        self.data.threshold_climateregion = self.load.get_pipeline_data(data_type="climate-region", country=self.country )
-        
-     
-
+        self.data.threshold_climateregion = self.load.get_pipeline_data(data_type="climate-region", country=self.country, climate_region_code_path=climate_region_code_path )
 
         self.extract = Extract(
             settings=settings,
@@ -62,7 +57,7 @@ class Pipeline:
 
         if prepare:
             logging.info("prepare ecmwf data")
-            self.extract.prepare_ecmwf_data(country=self.country, debug=debug)
+            self.extract.prepare_ecmwf_data(country=self.country, debug=debug, start_year=str(datetimestart.year), start_month=str(datetimestart.month))
 
         if extract:
             logging.info(f"extract ecmwf data")
@@ -91,26 +86,26 @@ class Pipeline:
             self.forecast.compute_forecast()
             if save:
                 logging.info("save drought forecasts to storage")
-                self.load.save_pipeline_data(
-                    data_type="seasonal-rainfall-forecast", dataset=self.data.forecast_admin
-                )
+                # self.load.save_pipeline_data(
+                #     data_type="seasonal-rainfall-forecast", dataset=self.data.forecast_admin
+                # )
 
-        if send:
-            if not forecast:
-                logging.info("get drought forecasts from storage")
-                self.data.forecast_admin = self.load.get_pipeline_data(
-                    data_type="seasonal-rainfall-forecast",
-                    country=self.country,
-                    start_date=datetimestart,
-                    end_date=datetimeend,
-                )
-            logging.info("send data to IBF API")
-            self.load.send_to_ibf_api(
-                forecast_data=self.data.forecast_admin,
-                threshold_climateregion=self.data.threshold_climateregion,
-                forecast_climateregion=self.data.forecast_climateregion,
-                drought_extent=self.forecast.drought_extent_raster,
-            )
-            logging.info("send data to 510 datalack")
-            self.load.upload_json_files( 
-                local_path=self.forecast.output_data_path)
+        # if send:
+        #     if not forecast:
+        #         logging.info("get drought forecasts from storage")
+        #         self.data.forecast_admin = self.load.get_pipeline_data(
+        #             data_type="seasonal-rainfall-forecast",
+        #             country=self.country,
+        #             start_date=datetimestart,
+        #             end_date=datetimeend,
+        #         )
+            # logging.info("send data to IBF API")
+            # self.load.send_to_ibf_api(
+            #     forecast_data=self.data.forecast_admin,
+            #     threshold_climateregion=self.data.threshold_climateregion,
+            #     forecast_climateregion=self.data.forecast_climateregion,
+            #     drought_extent=self.forecast.drought_extent_raster,
+            # )
+            # logging.info("send data to 510 datalack")
+            # self.load.upload_json_files( 
+            #     local_path=self.forecast.output_data_path)

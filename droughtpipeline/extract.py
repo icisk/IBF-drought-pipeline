@@ -86,12 +86,12 @@ class Extract:
         self.country = None
         self.secrets = None
         self.settings = None
-        self.inputPathGrid = "./data/input"
-        self.outputPathGrid = "./data/output"
-        self.confgPath = "./config"
+        self.inputPathGrid = "/tmp/data/input"
+        self.outputPathGrid = "/tmp/data/output"
+
         self.load = Load()
-        if not os.path.exists(self.inputPathGrid):
-            os.makedirs(self.inputPathGrid)
+        os.makedirs(self.inputPathGrid, exist_ok=True)
+        os.makedirs(self.outputPathGrid, exist_ok=True)
         if settings is not None:
             self.set_settings(settings)
             self.load.set_settings(settings)
@@ -145,19 +145,19 @@ class Extract:
             self.prepare_ecmwf_data()
             self.extract_ecmwf_data()
 
-    def prepare_ecmwf_data(self, country: str = None, debug: bool = False):
+    def prepare_ecmwf_data(self, country: str = None, start_year: str = datetime.today().strftime("%Y"), start_month: str = datetime.today().strftime("%m"), debug: bool = False):
         """
         download ecmwf data to the extent of the country
         """
         if country is None:
             country = self.country
         logging.info(f"start preparing ECMWF seasonal forecast data for country {country}") 
-        currentYear=datetime.today().strftime("%Y")
-        currentMonth=datetime.today().strftime("%m")
+        # currentYear=datetime.today().strftime("%Y")
+        # currentMonth=datetime.today().strftime("%m")
 
-        if debug:       
-            currentYear=(datetime.today() - timedelta(days=31)).strftime("%Y")
-            currentMonth=(datetime.today() - timedelta(days=31)).strftime("%m")
+        # if debug:       
+        #     currentYear=(datetime.today() - timedelta(days=31)).strftime("%Y")
+        #     currentMonth=(datetime.today() - timedelta(days=31)).strftime("%m")
         # Download netcdf file
         logging.info(f"downloading ecmwf data ")
         
@@ -167,8 +167,8 @@ class Extract:
             self.load.download_ecmwf_forecast(
                 country,
                 self.inputPathGrid,
-                currentYear, 
-                currentMonth,
+                start_year, 
+                start_month,
             )
         except FileNotFoundError:
             logging.warning(
@@ -325,8 +325,10 @@ class Extract:
         )
 
         if triggermodel=='seasonal_rainfall_forecast':
+            logging.info(ds_forecast)
+            logging.info("....")
             trigger_df= self.compare_forecast_to_historical_lower_tercile(country,ds_hindcast, ds_forecast)
-
+            logging.info(f"save seasonal_rainfall_forecast to geotiff: \n{trigger_df}")
             tprate_forecast = ds_forecast['tprate'] 
             tprate_hindcast = ds_hindcast['tprate']  
             tprate_hindcast_mean = ds_hindcast.mean(['number','time'])
@@ -347,6 +349,7 @@ class Extract:
 
         elif triggermodel=='seasonal_rainfall_forecast_3m':
             trigger_df= self.compare_forecast_to_historical_lower_tercile(country,ds_hindcast_3m, seas5_forecast_3m)
+            logging.info(f"save seasonal_rainfall_forecast_3m to geotiff: \n{trigger_df}")
             tprate_forecast = seas5_forecast_3m['tprate']
 
             tprate_hindcast = ds_hindcast_3m['tprate']  
@@ -381,9 +384,10 @@ class Extract:
         tprate_forecast_mean = tprate_forecast_mean.assign_coords(numdays=('forecastMonth', numdays))
         #tprate_forecast_mean = tprate_forecast_mean * tprate_forecast_mean.numdays * 24 * 60 * 60 * 1000
         tprate_forecast_mean.attrs['units'] = 'mm'
-
+        logging.info(f"skipping saving rainfall forecast to geotiff")
+        logging.info(f"save rainfall forecast to geotiff")
         self.save_to_geotiff(tprate_forecast_mean,country,prefix='rain_rp')
-         
+        logging.info(f"finished saving rainfall forecast to geotiff at {self.outputPathGrid}")
 
         for climateRegion in self.data.threshold_climateregion.get_climate_region_codes():
             pcodes=self.data.threshold_climateregion.get_data_unit(climate_region_code=climateRegion).pcodes
@@ -532,7 +536,7 @@ class Extract:
                             and probability of forecast being below this threshold.
         """
         
-  
+        logging.info("Comparing forecast to historical lower tercile")
         probability_maps = []
         drought_extent_maps = []
       
@@ -544,9 +548,11 @@ class Extract:
 
         RASTER_FILES={}
         
-        
+        logging.info("Extracting forecast data for each climate region for ds_hindcast and ds_forecast datasets")
+        logging.info(ds_hindcast.forecastMonth.values)
         # Iterate over each forecast month
         for month in ds_hindcast.forecastMonth.values:
+            logging.info(f"Processing forecast month {month}")
             lead_time=month-1
             # Extract data for the current forecast month
             data_month = ds_hindcast['tprate'].sel(forecastMonth=month)
@@ -556,13 +562,18 @@ class Extract:
 
             probability = (data_month2 <= quantile_33).sum(dim="number") / data_month2.sizes["number"]
             
-
+            logging.info(f"Probability for forecast month {month}")
+            logging.info(probability)
+            logging.info("-------------------")
 
 
             new_lat = np.linspace(probability.latitude.values.min(), probability.latitude.values.max(), probability.latitude.size * 10)
             new_lon = np.linspace(probability.longitude.values.min(), probability.longitude.values.max(), probability.longitude.size * 10)
             regional_mean = probability.rio.write_crs("EPSG:4326")
             resampled_regional_mean = regional_mean.interp(latitude=new_lat, longitude=new_lon, method="nearest")
+            logging.info(f"Resampled regional mean for forecast month {month}")
+            logging.info(resampled_regional_mean)
+            logging.info("-------------------")
             # Ensure the resampled DataArray has spatial dimensions
             resampled_regional_mean = resampled_regional_mean.rio.write_crs("EPSG:4326")
             resampled_regional_mean = resampled_regional_mean.drop_vars([coord for coord in resampled_regional_mean.coords if coord not in ['latitude', 'longitude']])      
@@ -590,6 +601,8 @@ class Extract:
             
             output_file = f"{self.outputPathGrid}/{prefix}_{lead_time}-month_{country}.tif"
             data = resampled_regional_mean.values
+            logging.info(f"save rainfall forecast to geotiff at {output_file}")
+            logging.info(data)
 
             with rasterio.open(
                 output_file,
@@ -620,7 +633,7 @@ class Extract:
                 transform=transform,
             ) as dst:
                 dst.write(data, 1)
-                
+        logging.info(f"Finished extracting forecast data for each climate region at {self.outputPathGrid}")
         # Combine results into new DataArrays
         quantile_ds = xr.concat(drought_extent_maps, dim="forecastMonth")
         probability_ds = xr.concat(probability_maps, dim="forecastMonth")

@@ -128,8 +128,8 @@ class Forecast:
         self.set_settings(settings)
         self.set_secrets(secrets)
         self.load = Load(settings=self.settings, secrets=self.secrets)
-        self.input_data_path: str = "data/input"
-        self.output_data_path: str = "data/output"
+        self.input_data_path: str = "/tmp/data/input"
+        self.output_data_path: str = "/tmp/data/output"
         self.drought_extent_raster: str = self.output_data_path + "/rainfall_forecast.tif" # 'rainfall_forecast_0-month changed to drought_extent_raster     
         self.pop_raster: str = self.input_data_path + "/population_density.tif"
         self.aff_pop_raster: str = self.output_data_path + "/affected_population.tif"
@@ -166,8 +166,8 @@ class Forecast:
         3. compute people affected
         """
         self.__compute_triggers()
-        if self.data.forecast_admin.is_any_triggered():
-            self.__compute_affected_pop()
+        # if self.data.forecast_admin.is_any_triggered():
+            # self.__compute_affected_pop()
 
     def __compute_triggers(self):
         """Determine if trigger level is reached, its probability, and the alert class"""
@@ -178,8 +178,8 @@ class Forecast:
 
 
 
-        trigger_on_minimum_probability = self.settings.get_country_setting(     country, "trigger_model")['trigger-on-minimum-probability']
-        trigger_on_minimum_admin_area_in_drought_extent = self.settings.get_country_setting(     country, "trigger_model")['trigger-on-minimum-admin-area-in-drought-extent']      
+        trigger_on_minimum_probability = self.settings.get_country_setting(country, "trigger_model")['trigger-on-minimum-probability']
+        trigger_on_minimum_admin_area_in_drought_extent = self.settings.get_country_setting(country, "trigger_model")['trigger-on-minimum-admin-area-in-drought-extent']      
    
 
         classify_alert_on = self.settings.get_country_setting(country, "classify-alert-on")
@@ -222,7 +222,7 @@ class Forecast:
                 output_file = f"{self.output_data_path}/rlower_tercile_probability_{lead_time}-month_{country}.tif"   
 
                 # Open the TIF file as an xarray object
-                rlower_tercile_probability = rioxarray.open_rasterio(output_file)
+                # rlower_tercile_probability = rioxarray.open_rasterio(output_file)
 
                 for adm_level in admin_levels:
                     climateRegionPcodes=pcodes[f'{adm_level}']
@@ -261,46 +261,46 @@ class Forecast:
                         )              
                    
 
-                    for pcode in climateRegionPcodes: 
-                        gdf1 = admin_boundary.query(f'adm{adm_level}_pcode == @pcode')
-                        clipped_regional_mean = rlower_tercile_probability.rio.clip(gdf1.geometry, gdf1.crs, drop=True, all_touched=True)
+                    # for pcode in climateRegionPcodes: 
+                    #     gdf1 = admin_boundary.query(f'adm{adm_level}_pcode == @pcode')
+                    #     clipped_regional_mean = rlower_tercile_probability.rio.clip(gdf1.geometry, gdf1.crs, drop=True, all_touched=True)
 
-                        likelihood = round(np.nanmedian(clipped_regional_mean.values),2)
+                    #     likelihood = round(np.nanmedian(clipped_regional_mean.values),2)
 
-                        binary_clipped_regional_mean = (
-                            clipped_regional_mean > trigger_on_minimum_probability
-                            ).astype(int)
+                    #     binary_clipped_regional_mean = (
+                    #         clipped_regional_mean > trigger_on_minimum_probability
+                    #         ).astype(int)
 
-                        anomalies_df = binary_clipped_regional_mean.to_dataframe(name='anomaly')
-                        percentage_greater_than_zero = (anomalies_df.anomaly.values > 0).sum() / anomalies_df.anomaly.values.size  
+                    #     anomalies_df = binary_clipped_regional_mean.to_dataframe(name='anomaly')
+                    #     percentage_greater_than_zero = (anomalies_df.anomaly.values > 0).sum() / anomalies_df.anomaly.values.size  
 
-                        if percentage_greater_than_zero > trigger_on_minimum_admin_area_in_drought_extent:
-                            triggered=1
-                        else:
-                            triggered=0
-
-
-                        alert_class_admin = classify_alert(
-                            triggered,
-                            likelihood,
-                            classify_alert_on,
-                            alert_on_minimum_probability,
-                        )   
+                    #     if percentage_greater_than_zero > trigger_on_minimum_admin_area_in_drought_extent:
+                    #         triggered=1
+                    #     else:
+                    #         triggered=0
 
 
-                        self.data.forecast_admin.upsert_data_unit(
-                            ForecastDataUnit(
-                            pcode=pcode,
-                            adm_level=adm_level, 
-                            lead_time=lead_time,        ########## check this         
-                            triggered=triggered,
-                            alert_class=alert_class_admin,
-                            #likelihood=likelihood,
-                            #tercile_lower=tercile_lower,
-                            forecast=forecast,
-                            #tercile_upper=tercile_upper,
+                    #     alert_class_admin = classify_alert(
+                    #         triggered,
+                    #         likelihood,
+                    #         classify_alert_on,
+                    #         alert_on_minimum_probability,
+                    #     )   
 
-                        ))
+
+                    #     self.data.forecast_admin.upsert_data_unit(
+                    #         ForecastDataUnit(
+                    #         pcode=pcode,
+                    #         adm_level=adm_level, 
+                    #         lead_time=lead_time,        ########## check this         
+                    #         triggered=triggered,
+                    #         alert_class=alert_class_admin,
+                    #         #likelihood=likelihood,
+                    #         #tercile_lower=tercile_lower,
+                    #         forecast=forecast,
+                    #         #tercile_upper=tercile_upper,
+
+                    #     ))
 
 
 

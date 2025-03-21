@@ -38,6 +38,7 @@ def run_drought_pipeline(
         country=country,
         settings=Settings("config/config.yaml"),
         secrets=Secrets(".env"),
+        climate_region_code_path="data/climate_region_codes.csv",
     )
     pipe.run_pipeline(
         prepare=prepare,
