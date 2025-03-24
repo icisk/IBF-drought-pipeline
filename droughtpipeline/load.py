@@ -147,15 +147,13 @@ class Load:
         """Get administrative boundaries from IBF API"""
         try:
             with open("./data/LSO_adm1.json") as url:
-                logging.info(url)
                 data = json.load(url)
-                logging.info(data)
-                logging.info("....")
                 for ix, record in enumerate(data["features"]):
                     data["features"][ix]["geometry"]["type"] = "MultiPolygon"
                 gdf = gpd.GeoDataFrame.from_features(data)
                 gdf.columns = map(str.lower, gdf.columns)
                 gdf.set_crs(epsg=4326, inplace=True)
+                return gdf
         except HTTPError:
             raise FileNotFoundError(
                 f"Administrative boundaries for country {country} "
