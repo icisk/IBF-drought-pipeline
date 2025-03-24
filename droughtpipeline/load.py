@@ -146,7 +146,8 @@ class Load:
     def get_adm_boundaries(self, country: str, adm_level: int) -> gpd.GeoDataFrame:
         """Get administrative boundaries from IBF API"""
         try:
-            with open("./data/LSO_adm1.json") as url:
+            lso_adm1_file = os.getenv("LSO_ADM1_FILE", "./data/lesotho/LSO_adm1.json")
+            with open(lso_adm1_file) as url:
                 data = json.load(url)
                 for ix, record in enumerate(data["features"]):
                     data["features"][ix]["geometry"]["type"] = "MultiPolygon"
