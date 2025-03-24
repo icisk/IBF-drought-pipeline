@@ -657,7 +657,7 @@ class Load:
         """   
         gdf=self.get_adm_boundaries(country,1)
         logging.info(f"Downloading ECMWF seasonal forecast data for {country}...")
-        logging.inf(gdf)
+        logging.info(gdf)
         min_x, min_y, max_x, max_y = gdf.total_bounds        
         
         KEY = os.getenv('CDSAPI_KEY')
