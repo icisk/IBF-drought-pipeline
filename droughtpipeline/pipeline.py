@@ -21,7 +21,7 @@ class Pipeline:
 
     def __init__(self, settings: Settings, secrets: Secrets, country: str, climate_region_code_path: str):
         self.settings = settings
-        logger.info(f"Pipeline settings: {json.dumps(self.settings.settings, indent=2)}")
+        # logger.info(f"Pipeline settings: {json.dumps(self.settings.settings, indent=2)}")
         if country not in [c["name"] for c in self.settings.get_setting("countries")]:
             raise ValueError(f"No config found for country {country}")
         self.country = country
